@@ -115,7 +115,11 @@ def build_agent(model, db, tools):
     run_query_node  = ToolNode([run_query_tool],  name="run_query")
 
     # ── System prompts ───────────────────────────────────────────────────────
-    QUERY_PROMPT = (
+    QUERY_PROMPT = (f"You have run a SQL query to answer a user's question.\n"
+        "Give a concise, direct answer to the user's question based on the result above. "
+        "Do not run any more queries.")
+
+    QUERY_PROMPT_1 = (
         f"""You are a {db.dialect} SQL expert. 
             Write a precise SELECT query for the question and call sql_db_query.
             Use only column names that exist in the provided schema.
