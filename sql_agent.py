@@ -21,12 +21,18 @@ Public API:
 """
 
 import json
+import os
 import re
-from typing import Literal
+from typing import Literal, Optional
 
 from langchain_core.messages import AIMessage
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode
+
+# Optional Groq + SQL utilities for turnkey setup
+from langchain_groq import ChatGroq
+from langchain_community.agent_toolkits import SQLDatabaseToolkit
+from langchain_community.utilities import SQLDatabase
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -131,7 +137,7 @@ def build_agent(model, db, tools):
             Rules:
             - CASE SENSITIVITY: This database is case-sensitive for identifiers. 
             - You MUST enclose ALL column names and table names in double quotes (e.g., "Year", "Primary Type") exactly as they appear in the schema.
-            - Use single quotes for string literals (e.g., WHERE "Primary Type" = 'THEFT').
+            - Use double quotes for string literals (e.g., WHERE "Primary Type" = 'THEFT').
             - Limit results to at most 3 rows unless the user asks otherwise.
             - Only select the columns that are relevant to the question.
             - Order results by a relevant column when it helps the answer.
@@ -319,6 +325,40 @@ def build_agent(model, db, tools):
     g.add_conditional_edges("generate_query", should_continue)
 
     return g.compile()
+
+
+# ── Convenience builders ─────────────────────────────────────────────────────
+
+def build_groq_agent(
+    db_uri: str,
+    model_name: str = "openai/gpt-oss-120b",
+    temperature: float = 0.0,
+    api_key: Optional[str] = None,
+):
+    """Build a SQL agent powered by Groq.
+
+    Parameters
+    ----------
+    db_uri : str
+        Database connection string (sqlite:///..., postgresql://..., etc.).
+    model_name : str
+        Groq model identifier (e.g., "mixtral-8x7b-32768", "gemma-7b-it").
+    temperature : float
+        Sampling temperature; keep low for deterministic SQL.
+    api_key : str, optional
+        Groq API key; falls back to GROQ_API_KEY environment variable.
+    """
+
+    groq_key = "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" #api_key or os.getenv("GROQ_API_KEY")
+    if not groq_key:
+        raise ValueError("Set GROQ_API_KEY or pass api_key to build_groq_agent().")
+
+    model = ChatGroq(model=model_name, temperature=temperature, api_key=groq_key)
+    db = SQLDatabase.from_uri(db_uri)
+    toolkit = SQLDatabaseToolkit(db=db, llm=model)
+    tools = toolkit.get_tools()
+
+    return build_agent(model, db, tools)
 
 
 # ── Runner ─────────────────────────────────────────────────────────────────────
