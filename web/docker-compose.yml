@@ -1,0 +1,55 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Chicago Crime SQL Agent — Web App
+#
+# Joins data-infra-network so it can reach:
+#   postgres_db  (PostgreSQL — Airflow stack)
+#   minio        (object store — available but not yet used by this service)
+#
+# Prerequisites:
+#   docker network create data-infra-network   (already exists if infra is up)
+#   cp .env.example .env && nano .env          (set GROQ_API_KEY)
+#
+# Usage:
+#   docker compose up -d --build
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  sql-agent-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sql-agent-web
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-9533}:3000"
+    env_file:
+      - .env          # contains GROQ_API_KEY (never commit this file)
+    environment:
+      NODE_ENV: production
+
+      # ── Database (internal network — postgres_db is the Airflow stack service) ──
+      DATABASE_URL: "postgresql://admin:admin%40123@postgres_db:5432/chicago_crime"
+      DATABASE_SSL: "false"
+
+      # ── MinIO (internal network — not yet used by this service, reserved) ────
+      # MINIO_ENDPOINT: "http://minio:9000"
+      # MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:-}"
+      # MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-}"
+
+      # ── Set BACKEND_URL only when proxying to an external API server ─────────
+      # Leave unset for self-hosted Docker (built-in API route is used instead)
+      # BACKEND_URL: ""
+
+    networks:
+      - data-infra-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+networks:
+  data-infra-network:
+    external: true
