@@ -20,6 +20,19 @@ jobs:
       - name: Wait for network
         run: sleep 10
 
+      - name: Write env file
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          ENV_FILE: ${{ secrets.ENV_FILE }}
+        with:
+          host: 100.90.162.48
+          username: vicky
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: ENV_FILE
+          script: |
+            mkdir -p ~/vscode_storage/sql_chatbot/web
+            printf '%s' "$ENV_FILE" > ~/vscode_storage/sql_chatbot/web/.env
+
       - name: Deploy to server
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -37,14 +50,14 @@ jobs:
             git -C .. pull origin main
 
             echo "Stopping containers..."
-            docker compose down --remove-orphans || true
+            sudo docker compose down --remove-orphans || true
 
             echo "Building and starting containers..."
-            if ! docker compose up -d --build --remove-orphans; then
-              echo "docker compose failed. Container status:"
-              docker compose ps
+            if ! sudo docker compose up -d --build --remove-orphans; then
+              echo "sudo docker compose failed. Container status:"
+              sudo docker compose ps
               echo "sql-agent-web logs:"
-              docker compose logs --tail=100 sql-agent-web
+              sudo docker compose logs --tail=100 sql-agent-web
               exit 1
             fi
 
@@ -52,9 +65,9 @@ jobs:
             sleep 20
 
             echo "Container status:"
-            docker compose ps
+            sudo docker compose ps
 
             echo "Cleaning up old images..."
-            docker image prune -f
+            sudo docker image prune -f
 
             echo "Deployment completed successfully!"
