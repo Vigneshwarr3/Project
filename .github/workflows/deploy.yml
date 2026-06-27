@@ -1,33 +1,27 @@
-name: Deploy
+name: Deploy SQL Agent
 
 on:
   push:
-    branches: [main]
-
-# ── Secrets required (3 total) ────────────────────────────────────────────────
-#
-#  TS_OAUTH_CLIENT_ID      Tailscale OAuth client ID
-#  TS_OAUTH_CLIENT_SECRET  Tailscale OAuth client secret
-#                          Create at: tailscale.com/admin/settings/oauth
-#
-#  SSH_PRIVATE_KEY         Your SSH private key (run: cat ~/.ssh/id_rsa)
-# ─────────────────────────────────────────────────────────────────────────────
+    branches:
+      - main
+  workflow_dispatch:
 
 jobs:
   deploy:
-    name: Deploy to server
     runs-on: ubuntu-latest
 
     steps:
       - name: Connect to Tailscale
-        uses: tailscale/github-action@v2
+        uses: tailscale/github-action@v3
         with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_CLIENT_SECRET }}
-          tags: tag:ci
+          authkey: ${{ secrets.TS_AUTHKEY }}
+          args: --ssh
 
-      - name: Pull latest code and rebuild
-        uses: appleboy/ssh-action@v1
+      - name: Wait for network
+        run: sleep 10
+
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: 100.90.162.48
           username: vicky
@@ -35,13 +29,31 @@ jobs:
           script: |
             set -e
 
+            echo "Navigating to project..."
             cd ~/vscode_storage/sql_chatbot/web
 
-            # Pull latest changes
-            git -C .. pull
+            echo "Pulling latest code..."
+            git -C .. pull origin main
 
-            # Rebuild image and restart container
-            docker compose up -d --build
+            echo "Stopping containers..."
+            /usr/bin/docker compose down --remove-orphans || true
 
-            # Clean up old dangling images
+            echo "Building and starting containers..."
+            if ! /usr/bin/docker compose up -d --build --remove-orphans; then
+              echo "docker compose failed. Container status:"
+              /usr/bin/docker compose ps
+              echo "sql-agent-web logs:"
+              /usr/bin/docker compose logs --tail=100 sql-agent-web
+              exit 1
+            fi
+
+            echo "Waiting for services..."
+            sleep 20
+
+            echo "Container status:"
+            /usr/bin/docker compose ps
+
+            echo "Cleaning up old images..."
             docker image prune -f
+
+            echo "Deployment completed successfully!"
